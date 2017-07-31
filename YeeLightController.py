@@ -27,6 +27,7 @@ scan_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
   
 #----------Functions----------
 def next_cmd_id():
+	"""Creates an Id to help request sender to correlate request and response"""
 	global current_command_id
 	current_command_id += 1
 	return current_command_id
@@ -117,8 +118,9 @@ def handle_search_response(data):
 	power = get_param_value(data, "power")
 	bright = get_param_value(data, "bright")
 	rgb = get_param_value(data, "rgb")
+	supported = get_param_value(data, "support") #Grab supported methods
 	# use two dictionaries to store index->ip and ip->bulb map
-	detected_bulbs[host_ip] = [bulb_id, model, power, bright, rgb, host_port]
+	detected_bulbs[host_ip] = [bulb_id, model, power, bright, rgb, host_port, supported]
 	bulb_idx2ip[bulb_id] = host_ip
 
 def bulbs_detection_loop():
@@ -134,10 +136,10 @@ def bulbs_detection_loop():
 		  send_search_broadcast()#Constructs and sends a search request to a socket scan_scocket
 		
 		# scanner
-		#TODO change to a normal loop?
 		while True:
 			try:
 				DataBytes = scan_socket.recv(2048)#Receives data from the socket
+				#.recv() receives TCP message
 				data = DataBytes.decode()#Decode bytes->str
 			except socket.error as e:
 				err = e.args[0]
@@ -147,19 +149,20 @@ def bulbs_detection_loop():
 					print(e)
 					sys.exit(1)
 			handle_search_response(data)
-	# passive listener 
-	while True:
-		try:
-			DataBytes, addr = listen_socket.recvfrom(2048)
-			data = DataBytes.decode()
-		except socket.error as e:
-			err = e.args[0]
-			if err == errno.EAGAIN or err == errno.EWOULDBLOCK:
-				break
-			else:
-				print (e)
-				sys.exit(1)
-		handle_search_response(data)
+	## passive listener 
+	#while True:
+	#	try:
+	#		DataBytes, addr = listen_socket.recvfrom(2048)
+	#		#.recvfrom() receives UDP message
+	#		data = DataBytes.decode()
+	#	except socket.error as e:
+	#		err = e.args[0]
+	#		if err == errno.EAGAIN or err == errno.EWOULDBLOCK:
+	#			break
+	#		else:
+	#			print (e)
+	#			sys.exit(1)
+	#	handle_search_response(data)
     #TODO reset time_elapsed?
 	time_elapsed+=read_interval
 	sleep(read_interval/1000.0)
@@ -176,14 +179,15 @@ def display_bulb(idx):
 	power = detected_bulbs[bulb_ip][2]
 	bright = detected_bulbs[bulb_ip][3]
 	rgb = detected_bulbs[bulb_ip][4]
+	supported = detected_bulbs[bulb_ip][6]
 	#TODO tidy up the printing
 	print(str(idx) + ":\nip = "
 		+bulb_ip + ",\nmodel = " + model
 		+",\npower = " + power + ",\nbright = "
-		+ bright + ",\nrgb = " + rgb)
+		+ bright + ",\nrgb = " + rgb+",\nmethods = "+supported+"\n")
 
 def display_bulbs():
-	"""Displays info of the known bulbs"""
+	"""Displays info of the known bulbs"""	
 	print(str(len(detected_bulbs)) + " Managed bulbs:")
 	for i in range(1, len(detected_bulbs)+1):
 		display_bulb(i)
@@ -226,6 +230,7 @@ def handle_user_input():
     valid_cli=True
     debug("command_line=" + command_line)
     command_line.lower() # convert all user input to lower case, i.e. cli is caseless
+	#create an array of word/parameters
     argv = command_line.split() # i.e. don't allow parameters with space characters
     if len(argv) == 0:
       continue
@@ -239,8 +244,8 @@ def handle_user_input():
       detected_bulbs.clear()
       bulb_idx2ip.clear()
       send_search_broadcast()
-      #sleep(0.5)
-      #display_bulbs()
+      sleep(0.5)
+      display_bulbs()
     elif argv[0] == "h" or argv[0] == "help":
       print_cli_usage()
       continue
