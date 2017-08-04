@@ -1,9 +1,9 @@
 Bugs found in original developer demo:
 (I'm new to Python 3 and have never done Python 2. I could quite possibly be very wrong.)
 
-in function bulbs_detection_loop()[1] passive listener loop is never executed as well as time_elapsed is never incremented due to thread being stuck in the scanner loop
+~~in function bulbs_detection_loop()[1] passive listener loop is never executed as well as time_elapsed is never incremented due to thread being stuck in the scanner loop
 
-def bulbs_detection_loop():
+def bulbs_detection_loop():~~
   '''
   a standalone thread broadcasting search request and listening on all responses
   '''
@@ -46,3 +46,7 @@ def bulbs_detection_loop():
     sleep(read_interval/1000.0)
   scan_socket.close()
   listen_socket.close()
+  
+  References:
+  
+  http://www.tldp.org/HOWTO/Multicast-HOWTO.html#toc2 //Multicast Explained
