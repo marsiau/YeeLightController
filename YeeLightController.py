@@ -4,11 +4,13 @@ import socket	#Library for sockets
 import errno	#Error indication
 import struct	#Performs conversions between Python values and bytes objects
 import threading	#Multithreding library
+from YeeBulb import YeeBulb
 from time import sleep
 
 #----------Variables----------
+##Dictionary of discovered bulbs. {bulb_ip:YeeBulb)
 detected_bulbs = {} #Dictionary of detected light bulbs ip->bulb map
-bulb_idx2ip = {} #Index->ip
+bulb_id2ip = {} #{bulb_index:bulb_ip}
 current_command_id = 0
 DEBUGGING = True	#Turn on/off debugging messages
 RUNNING = True	#Stops bulb detection loop
@@ -31,12 +33,6 @@ listen_socket.setsockopt(socket.SOL_IP, socket.IP_MULTICAST_LOOP, 0)#To stop loo
 def debug(msg):
 	if DEBUGGING:
 		print(msg)
-
-def next_cmd_id():
-	"""Creates an Id to help request sender to correlate request and response"""
-	global current_command_id
-	current_command_id += 1
-	return current_command_id
 
 def print_cli_usage():
 	"""Prints viable user commands"""
@@ -85,24 +81,22 @@ def handle_search_response(data):
 	if match == None:
 		debug( "invalid data received: " + data )
 		return
-	#	
-	host_ip = match.group(1) #host_ip = /192.168.1.239(Ex)
+
+	bulb_ip = match.group(1) #bulb_ip = /192.168.1.239(Ex)
 	#Check if bulb is already known
-	if host_ip in detected_bulbs:
-		#If known, give an id
-		bulb_id = detected_bulbs[host_ip][0]
-	else:
+	if not(bulb_ip in detected_bulbs):
 		#If not give a new one
-		bulb_id = len(detected_bulbs)+1
-	host_port = match.group(3)
-	model = get_param_value(data, "model")
-	power = get_param_value(data, "power")
-	bright = get_param_value(data, "bright")
-	rgb = get_param_value(data, "rgb")
-	supported = get_param_value(data, "support") #Grab supported methods
-	# use two dictionaries to store index->ip and ip->bulb map
-	detected_bulbs[host_ip] = [bulb_id, model, power, bright, rgb, host_port, supported]
-	bulb_idx2ip[bulb_id] = host_ip
+		bulb_id = int(len(detected_bulbs)+1)
+		bulb_port = match.group(3)
+		model = get_param_value(data, "model")
+		power = get_param_value(data, "power")
+		bright = get_param_value(data, "bright")
+		rgb = get_param_value(data, "rgb")
+		supported = get_param_value(data, "support") #Grab supported methods
+		#Create a new entry for the bulb
+		
+		detected_bulbs[bulb_ip] = YeeBulb(bulb_id, bulb_ip, bulb_port, model, power, bright, rgb, supported.split())
+		bulb_id2ip[bulb_id] = bulb_ip
 
 def bulbs_detection_loop():
 	"""A standalone thread broadcasting search request and listening on all responses"""
@@ -155,114 +149,68 @@ def bulbs_detection_loop():
 	scan_socket.close()
 	listen_socket.close()
 
-def display_bulb(idx):
-	"""Displays bulb information"""
-	if not idx in bulb_idx2ip:
-		print("error: invalid bulb idx")
-		return
-	bulb_ip = bulb_idx2ip[idx]
-	model = detected_bulbs[bulb_ip][1]
-	power = detected_bulbs[bulb_ip][2]
-	bright = detected_bulbs[bulb_ip][3]
-	rgb = detected_bulbs[bulb_ip][4]
-	supported = detected_bulbs[bulb_ip][6]
-	#TODO tidy up the printing
-	print(str(idx) + ":\nip = "
-		+bulb_ip + ",\nmodel = " + model
-		+",\npower = " + power + ",\nbright = "
-		+ bright + ",\nrgb = " + rgb+",\nmethods = "+supported+"\n")
-
 def display_bulbs():
 	"""Displays info of the known bulbs"""	
-	print(str(len(detected_bulbs)) + " Managed bulbs:")
-	for i in range(1, len(detected_bulbs)+1):
-		display_bulb(i)
-
-def operate_on_bulb(idx, method, params):
-	'''
-	Operate on bulb; no gurantee of success.
-	Input data 'params' must be a compiled into one string.
-	E.g. params="1"; params="\"smooth\"", params="1,\"smooth\",80"
-	'''
-	#TODO check if successful
-	if not idx in bulb_idx2ip:
-		print("error: invalid bulb idx")
-		return	
-	bulb_ip=bulb_idx2ip[idx]
-	port=detected_bulbs[bulb_ip][5]
-	try:
-		tcp_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-		print("connect ",bulb_ip, port ,"...")
-		tcp_socket.connect((bulb_ip, int(port)))
-		msg="{\"id\":" + str(next_cmd_id()) + ",\"method\":\""
-		msg += method + "\",\"params\":[" + params + "]}\r\n"
-		tcp_socket.send(msg.encode())
-		tcp_socket.close()
-	except Exception as e:
-		print("Unexpected error:", e)
-
-def toggle_bulb(idx):
-	operate_on_bulb(idx, "toggle", "")
-
-def set_bright(idx, bright):
-	operate_on_bulb(idx, "set_bright", str(bright))
-
+	#TODO this could try to access a dead bulb
+	print("Managed bulbs = "+str(len(detected_bulbs))+":")
+	for keys, values in detected_bulbs.items():
+		print(values.info())
+		
 def handle_user_input():
-  '''
-  User interaction loop.
-  '''
-  while True:
-    command_line = input("Enter a command: ")
-    valid_cli=True
-    debug("command_line=" + command_line)
-    command_line.lower() # convert all user input to lower case, i.e. cli is caseless
-	#create an array of word/parameters
-    argv = command_line.split() # i.e. don't allow parameters with space characters
-    if len(argv) == 0:
-      continue
-    if argv[0] == "q" or argv[0] == "quit":
-      print("Bye!")
-      return
-    elif argv[0] == "l" or argv[0] == "list":
-      display_bulbs()
-	  #----------------------------------------
-    elif argv[0] == "r" or argv[0] == "refresh":
-      detected_bulbs.clear()
-      bulb_idx2ip.clear()
-      send_search_broadcast()
-      sleep(0.5)
-      display_bulbs()
-    elif argv[0] == "h" or argv[0] == "help":
-      print_cli_usage()
-      continue
-    elif argv[0] == "t" or argv[0] == "toggle":
-      if len(argv) != 2:
-        valid_cli=False
-      else:
-        try:
-          i = int(float(argv[1]))
-          toggle_bulb(i)
-        except:
-          valid_cli=False
-    elif argv[0] == "b" or argv[0] == "bright":
-      if len(argv) != 3:
-        print("incorrect argc")
-        valid_cli=False
-      else:
-        try:
-          idx = int(float(argv[1]))
-          print("idx"), idx
-          bright = int(float(argv[2]))
-          print("bright"), bright
-          set_bright(idx, bright)
-        except:
-          valid_cli=False
-    else:
-      valid_cli=False
-
-    if not valid_cli:
-      print("error: invalid command line:", command_line)
-      print_cli_usage()
+	'''
+	User interaction loop.
+	'''
+	while True:
+		command_line = input("Enter a command: ")
+		valid_cli=True
+		debug("command_line=" + command_line)
+		command_line.lower() # convert all user input to lower case, i.e. cli is caseless
+		#create an array of word/parameters
+		argv = command_line.split() # i.e. don't allow parameters with space characters
+		if len(argv) == 0:
+			continue
+		if argv[0] == "q" or argv[0] == "quit":
+			print("Bye!")
+			return
+		elif argv[0] == "l" or argv[0] == "list":
+			display_bulbs()
+		elif argv[0] == "r" or argv[0] == "refresh":
+			detected_bulbs.clear()
+			bulb_id2ip.clear()
+			send_search_broadcast()
+			sleep(0.5)
+			display_bulbs()
+		elif argv[0] == "h" or argv[0] == "help":
+			print_cli_usage()
+			continue
+		elif argv[0] == "t" or argv[0] == "toggle":
+			if len(argv) != 2:
+				valid_cli=False
+			else:
+				try:
+					idx = int(float(argv[1]))
+					ipb = bulb_id2ip[idx]
+					detected_bulbs[ipb].toggle()
+				except:
+					valid_cli=False
+		elif argv[0] == "b" or argv[0] == "bright":
+			if len(argv) != 3:
+				print("incorrect argc")
+				valid_cli=False
+			else:
+				try:
+					idx = int(float(argv[1]))
+					#TODO limits for brightness
+					ipb = bulb_id2ip[idx]
+					detected_bulbs[ipb].set_brightness(argv[2])
+				except:
+					valid_cli=False
+		else:
+			valid_cli=False
+		
+		if not valid_cli:
+			print("error: invalid command line:", command_line)
+			print_cli_usage()
 
 #----------Main----------
 print("Hello there buddy\n")
