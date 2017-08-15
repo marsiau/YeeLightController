@@ -12,7 +12,7 @@ from time import sleep
 detected_bulbs = {} #Dictionary of detected light bulbs ip->bulb map
 bulb_id2ip = {} #{bulb_index:bulb_ip}
 current_command_id = 0
-DEBUGGING = True	#Turn on/off debugging messages
+DEBUGGING = False	#Turn on/off debugging messages
 RUNNING = True	#Stops bulb detection loop
 MCAST_GRP = '239.255.255.250' #Multicast group
 MCAST_PORT = 1982 #Multicast port
@@ -42,12 +42,14 @@ def print_cli_usage():
 	print("  t|toggle <idx>: toggle bulb indicated by idx")
 	print("  b|bright <idx> <bright>: set brightness of bulb with label <idx>")
 	print("  r|refresh: refresh bulb list")
-	print("  l|list: lsit all managed bulbs")
-
+	print("  l|list: list all managed bulbs")
+	print("  ct|ColorTemp <idx> <temperature> <effect> <duration>: set color temperature")
+	print("  rgb <idx> <rgb value> <effect> <duration>: set rgb value")
+	print("  hue <idx> <hue> <sat> <effect> <duration>: set color hue")
 def get_param_value(data, param):
-	'''
+	"""
 	Match line of 'param = value'
-	'''
+	"""
 	param_re = re.compile(param+":\s*([ -~]*)") #match all printable characters
 	match = param_re.search(data)
 	value=""
@@ -56,7 +58,9 @@ def get_param_value(data, param):
 		return value
 
 def send_search_broadcast():
-	"""Multicast search request to all hosts in LAN, do not wait for response"""
+	"""
+	Multicast search request to all hosts in LAN, do not wait for response
+	"""
 	multicase_address = (MCAST_GRP, MCAST_PORT) #Tuple with Multicast group and port
 	debug("\nSend search broadcast")
 	msg = "M-SEARCH * HTTP/1.1\r\n" 
@@ -99,7 +103,9 @@ def handle_search_response(data):
 		bulb_id2ip[bulb_id] = bulb_ip
 
 def bulbs_detection_loop():
-	"""A standalone thread broadcasting search request and listening on all responses"""
+	"""
+	A standalone thread broadcasting search request and listening on all responses
+	"""
 	scan_socket.setblocking(0)
 	listen_socket.setblocking(0)
 	debug("bulbs_detection_loop running") #msg if debuging
@@ -150,16 +156,18 @@ def bulbs_detection_loop():
 	listen_socket.close()
 
 def display_bulbs():
-	"""Displays info of the known bulbs"""	
+	"""
+	Displays info of the known bulbs
+	"""	
 	#TODO this could try to access a dead bulb
 	print("Managed bulbs = "+str(len(detected_bulbs))+":")
 	for keys, values in detected_bulbs.items():
 		print(values.info())
 		
 def handle_user_input():
-	'''
+	"""
 	User interaction loop.
-	'''
+	"""
 	while True:
 		command_line = input("Enter a command: ")
 		valid_cli=True
@@ -202,9 +210,65 @@ def handle_user_input():
 					idx = int(float(argv[1]))
 					#TODO limits for brightness
 					ipb = bulb_id2ip[idx]
-					detected_bulbs[ipb].set_brightness(argv[2])
+					detected_bulbs[ipb].set_bright(argv[2])
 				except:
 					valid_cli=False
+		#MINE-------------------------------------------
+		elif argv[0] == "ct" or argv[0] == "ColorTemp":
+			if len(argv) not in range(3, 6) or not (1700 <= int(argv[2]) <= 6500):
+				print("incorrect argc")
+				valid_cli=False
+			else:
+				idx = int(float(argv[1]))	
+				ipb = bulb_id2ip[idx]
+				try:
+					if len(argv) == 5:
+						detected_bulbs[ipb].set_ct(argv[2], argv[3], argv[4])
+					elif len(argv) == 4:
+						detected_bulbs[ipb].set_ct(argv[2], argv[3])
+					else:
+						detected_bulbs[ipb].set_ct(argv[2])
+				except:
+					valid_cli=False
+		
+		elif argv[0] == "rgb":
+			if len(argv) not in range(3, 6) or not (0 <= int(argv[2]) <= 16777215):
+				print("incorrect argc")
+				valid_cli=False
+			else:
+				idx = int(float(argv[1]))	
+				ipb = bulb_id2ip[idx]
+				try:
+					if len(argv) == 5:
+						detected_bulbs[ipb].set_rgb(argv[2], argv[3], argv[4])
+					elif len(argv) == 4:
+						detected_bulbs[ipb].set_rgb(argv[2], argv[3])
+					else:
+						detected_bulbs[ipb].set_rgb(argv[2])
+				except:
+					valid_cli=False
+
+		elif argv[0] == "hue":
+			if len(argv) < 0 or len(argv) > 6 or \
+				int(argv[2]) < 0 or int(argv[2]) > 359 or \
+				len(argv) > 3 and (int(argv[3]) < 0 or int(argv[3]) > 100):
+				print("incorrect argc")
+				valid_cli=False
+			else:
+				idx = int(float(argv[1]))	
+				ipb = bulb_id2ip[idx]
+				try:
+					if len(argv) == 6:
+						detected_bulbs[ipb].set_hue(argv[2], argv[3], argv[4], argv[5])#w
+					elif len(argv) == 5:
+						detected_bulbs[ipb].set_hue(argv[2], argv[3], argv[4])#w
+					elif len(argv) == 4:
+						detected_bulbs[ipb].set_hue(argv[2], argv[3])
+					else:
+						detected_bulbs[ipb].set_hue(argv[2])
+				except:
+					valid_cli=False
+		#MINE-------------------------------------------END
 		else:
 			valid_cli=False
 		
@@ -213,7 +277,7 @@ def handle_user_input():
 			print_cli_usage()
 
 #----------Main----------
-print("Hello there buddy\n")
+print("Welcome to Yeelight WifiBulb Lan controller")
 print_cli_usage()
 
 #Creates a seperate thread that executes bulbs_detection_loop 

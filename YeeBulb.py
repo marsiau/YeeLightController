@@ -1,14 +1,14 @@
 import socket
 
 #----------Variables----------
-DEBUGGING = True	#Turn on/off debugging messages
 
 def debug(msg):
-	if DEBUGGING:
+	if YeeBulb.DEBUGGING:
 		print(msg)
 
 #Bulb class
 class YeeBulb:
+	DEBUGGING = True	#Turn on/off debugging messages
 	def __init__(self, bulb_id, bulb_ip, bulb_port, model, power, bright, rgb, methods):
 		self.id = bulb_id
 		self.ip = bulb_ip
@@ -47,14 +47,19 @@ class YeeBulb:
 		self.cmd_id += 1
 		return self.cmd_id
 		
+	def handle_operation_response(data):
+		"""
+		{"id":1, "result":["ok"]}
+		{"id":2, "error":{"code":-1, “message”:"unsupported method"}}
+		"""
+
 	def operate(self, method, params):
-		'''
-		Operate on bulb; no gurantee of success.
+		"""
 		Input data 'params' must be a compiled into one string.
 		E.g. params="1"; params="\"smooth\"", params="1,\"smooth\",80"
-		'''
-		#TODO check if successful
-		debug("\noperating\n")
+		E.x. { "id": 1, "method": "set_power", "params":["on", "smooth", 500]}
+		"""
+		debug("\nOperating\n")
 		try:
 			tcp_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 			debug("connecting " + self.ip +" "+ self.port +"...")
@@ -62,12 +67,62 @@ class YeeBulb:
 			msg="{\"id\":" + str(self.next_id()) + ",\"method\":\""
 			msg += method + "\",\"params\":[" + params + "]}\r\n"
 			tcp_socket.send(msg.encode())
+			debug("\nDealing with response\n")
+			DataBytes = tcp_socket.recv(2048)
+			data = DataBytes.decode()#Decode bytes->str
+			debug("Data: "+data)
+			if "ok" in data:
+				debug("Operation successful")
+			else:
+				debug("Operation failed")
 			tcp_socket.close()
 		except Exception as e:
 			debug("Unexpected error:", e)
 
+	def set_ct(self, ct_value, effect = "sudden", duration = 30):
+		"""
+		Method to change the color temperature of the bulb
+		ct_value - targeted color temperature (1700 <= ct_value <= 6500 (k))
+		effect - sudden/smooth
+		duration - total time of gradual change if smooth mode is selected (duration > 30 (ms))
+		"""
+		#TODO check if on
+		params = str(ct_value) +",\"" + str(effect) + "\"," + str(duration)
+		self.operate("set_ct_abx", params)
+
+	def set_rgb(self, rgb_value, effect = "sudden", duration = 30):
+		"""
+		Metod to change the color of the bulb
+		rgb_value - the target color (decimal int;  0 <= rgb_value <= 16777215)
+		"""
+		params = str(rgb_value) +",\"" + str(effect) + "\"," + str(duration)
+		self.operate("set_rgb", params)
+
+	def set_hue(self, hue, sat = 0, effect = "sudden", duration = 30):
+		"""
+		hue - target hue value (decimal int; 0 <= hue <= 359) 
+		sat - target saturation value (int; 0 <= sat <= 100)
+		"""
+		params = str(hue) + "," + str(sat) +",\"" + str(effect) + "\"," + str(duration)
+		self.operate("set_hsv", params)
+	def set_bright(self, bright, effect = "sudden", duration = 30):
+		"""
+		Method to set the brightness of the bulb
+		bright - target brightness (1 <= bright <= 100)
+		"""
+		params = str(bright) + ",\"" + str(effect) + "\"," + str(duration)
+		self.operate("set_bright", params)
+	
+	#NOT TESTED
+	def turn_on(self, effect = "sudden", duration = 30):
+		params = "\"on\"" + ",\"" + str(effect) + "\"," + str(duration)
+		self.operate("set_power", params)
+
+	def turn_off(self, effect = "sudden", duration = 30):
+		params = "\"off\"" + ",\"" + str(effect) + "\"," + str(duration)
+		self.operate("set_power", params)
+
 	def toggle(self):
+		"""Toggles on/off """
 		self.operate("toggle", "")
 
-	def set_brightness(self, bright):
-		self.operate("set_bright", str(bright))
