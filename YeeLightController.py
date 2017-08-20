@@ -88,19 +88,23 @@ def handle_search_response(data):
 
 	bulb_ip = match.group(1) #bulb_ip = /192.168.1.239(Ex)
 	#Check if bulb is already known
-	if not(bulb_ip in detected_bulbs):
+	if bulb_ip in detected_bulbs:
+		#If known, grab an id
+		bulb_id = detected_bulbs[bulb_ip].id
+	else:
 		#If not give a new one
-		bulb_id = int(len(detected_bulbs)+1)
-		bulb_port = match.group(3)
-		model = get_param_value(data, "model")
-		power = get_param_value(data, "power")
-		bright = get_param_value(data, "bright")
-		rgb = get_param_value(data, "rgb")
-		supported = get_param_value(data, "support") #Grab supported methods
-		#Create a new entry for the bulb
-		
-		detected_bulbs[bulb_ip] = YeeBulb(bulb_id, bulb_ip, bulb_port, model, power, bright, rgb, supported.split())
-		bulb_id2ip[bulb_id] = bulb_ip
+		bulb_id = len(detected_bulbs)+1
+
+	bulb_port = match.group(3)
+	model = get_param_value(data, "model")
+	power = get_param_value(data, "power")
+	bright = get_param_value(data, "bright")
+	rgb = get_param_value(data, "rgb")
+	supported = get_param_value(data, "support") #Grab supported methods
+	#Create a new entry for the bulb
+	
+	detected_bulbs[bulb_ip] = YeeBulb(bulb_id, bulb_ip, bulb_port, model, power, bright, rgb, supported.split())
+	bulb_id2ip[bulb_id] = bulb_ip
 
 def bulbs_detection_loop():
 	"""
@@ -268,6 +272,7 @@ def handle_user_input():
 						detected_bulbs[ipb].set_hue(argv[2])
 				except:
 					valid_cli=False
+
 		#MINE-------------------------------------------END
 		else:
 			valid_cli=False

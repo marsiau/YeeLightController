@@ -1,3 +1,0 @@
-References:
-  
-  http://www.tldp.org/HOWTO/Multicast-HOWTO.html#toc2 //Multicast Explained
