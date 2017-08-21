@@ -76,6 +76,7 @@ def handle_search_response(data):
 	"""
 	Parse search response and extract all interested data.
 	If new bulb is found, insert it into dictionary of managed bulbs.
+	If bulb is already known - update it's info
 	"""
 	#Compile the pattern into regex object
 	location_re = re.compile("Location.*yeelight[^0-9]*([0-9]{1,3}(\.[0-9]{1,3}){3}):([0-9]*)")
@@ -107,9 +108,7 @@ def handle_search_response(data):
 	bulb_id2ip[bulb_id] = bulb_ip
 
 def bulbs_detection_loop():
-	"""
-	A standalone thread broadcasting search request and listening on all responses
-	"""
+	"""	A standalone thread broadcasting search request and listening on all responses.	"""
 	scan_socket.setblocking(0)
 	listen_socket.setblocking(0)
 	debug("bulbs_detection_loop running") #msg if debuging
@@ -160,18 +159,14 @@ def bulbs_detection_loop():
 	listen_socket.close()
 
 def display_bulbs():
-	"""
-	Displays info of the known bulbs
-	"""	
+	"""	Displays info of the known bulbs. """	
 	#TODO this could try to access a dead bulb
 	print("Managed bulbs = "+str(len(detected_bulbs))+":")
 	for keys, values in detected_bulbs.items():
 		print(values.info())
 		
 def handle_user_input():
-	"""
-	User interaction loop.
-	"""
+	"""	User interaction loop. """
 	while True:
 		command_line = input("Enter a command: ")
 		valid_cli=True

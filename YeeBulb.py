@@ -4,21 +4,6 @@ import re
 #Bulb class
 class YeeBulb:
 	DISPLAY_MSG = True	#Turn on/off debugging messages
-	
-	@classmethod
-	def display(cls, 	msg):
-		if YeeBulb.DISPLAY_MSG:
- 			print(msg)
-
-	@staticmethod
-	def get_param(data, param):
-		"""	Match line of 'param = value' """
-		param_re = re.compile(param+":\s*([ -~]*)") #match all printable characters
-		match = param_re.search(data)
-		if match != None:
-			value = match.group(1)
-			return value
-
 	def __init__(self, bulb_id, bulb_ip, bulb_port, model, power, bright, rgb, methods):
 		self.id = bulb_id
 		self.ip = bulb_ip
@@ -31,6 +16,22 @@ class YeeBulb:
 
 		self.cmd_id = int(0)
 		#self.socket/???
+
+	@classmethod
+	def display(cls, 	msg):
+		if YeeBulb.DISPLAY_MSG:
+ 			print(msg)
+
+	def supports_method(self, method):
+		if method in self.methods:
+			return True
+		else:
+			return False
+
+	def next_id(self):
+		"""Creates an Id to help request sender to correlate request and response"""
+		self.cmd_id += 1
+		return self.cmd_id
 
 	def info(self):
 		"""Returns bulb information"""
@@ -46,22 +47,22 @@ class YeeBulb:
 		for i in range(0, len(self.methods)):
 			info+="\t"+self.methods[i]+"\n"
 		return info
-
-	def supports_method(self, method):
-		if method in self.methods:
-			return True
-		else:
-			return False
-	
-	def next_id(self):
-		"""Creates an Id to help request sender to correlate request and response"""
-		self.cmd_id += 1
-		return self.cmd_id
 	
 	@staticmethod
-	def handle_operation_response(method, params, data):
+	def get_param(data, param):
+		"""	Match line of 'param = value' """
+		param_re = re.compile(param + ":\s*([ -~]*)") #match all printable characters
+		match = param_re.search(data)
+		value = ""
+		if match != None:
+			value = match.group(1)
+			return value
+
+	@staticmethod
+	def handle_result_message(method, params, data):
 		"""
-		Method to handle the bulb's response to operation request
+		Method to handle the bulb's response to operation request.
+		Ex.:
 		{"id":1, "result":["ok"]}
 		{"id":2, "error":{"code":-1, “message”:"unsupported method"}}
 		Command “3” requested for current status
@@ -69,17 +70,16 @@ class YeeBulb:
 		The result will be:
 		{"id":3, "result":["on","100"]}
 		"""
-		print("blt kazkas negerai")
-		if method == "get_prop":
+		if method == "get_prop":#NOT TESTED
 			param_list = params.split(',')
-			status_list = (YeeBulb.get_param(data, "result")).split(',')
+			status_list = (YeeBulb.get_param(data, '"result"')).split(',')
 			response = "Current status:"
 			for i in range (0, len(param_list)):
 				response += "\t" + param_list[i] + " = " + status_list[i] + "\n" 
-		elif YeeBulb.get_param(data, "result") == "ok":
-			YeeBulb.display("operations successful")
-		elif "error" in data:
-			respose = YeeBulb.get_param(data, "error")
+		elif '"ok"' in data:
+			response = "operations successful"
+		elif '"error"' in data:
+			respose = YeeBulb.get_param(data, '"error"')
 		else:
 			response = "Unknown error.\n Received data:\n" + data
 		return response
@@ -90,7 +90,6 @@ class YeeBulb:
 		E.g. params="1"; params="\"smooth\"", params="1,\"smooth\",80"
 		E.x. { "id": 1, "method": "set_power", "params":["on", "smooth", 500]}
 		"""
-		print("pyska")
 		YeeBulb.display("\nOperating\n")
 		if not self.supports_method(method):
 			print("ERROR\nMethod is not supported.")
@@ -106,15 +105,14 @@ class YeeBulb:
 				DataBytes = tcp_socket.recv(2048)
 				data = DataBytes.decode()#Decode bytes->str
 				YeeBulb.display("Data: " + data)
-				YeeBulb.display(handle_operation_response(method, params, data))
+				response_msg = YeeBulb.handle_result_message(method, params, data)
+				YeeBulb.display(response_msg)
 				tcp_socket.close()
 			except Exception as e:
 				YeeBulb.display("Unexpected error:", e)
 
 	def get_properties(req_params):
-		"""
-		Method to retrieve current state of certain bulb parameters
-		"""
+		"""	Method to retrieve current state of certain bulb parameters	"""
 		params = ""
 		for i in range(0, len(req_params)):
 			params += "\"" + req_params[i] +  "\", "
@@ -146,6 +144,7 @@ class YeeBulb:
 		"""
 		params = str(hue) + "," + str(sat) +",\"" + str(effect) + "\"," + str(duration)
 		self.operate("set_hsv", params)
+	
 	def set_bright(self, bright, effect = "sudden", duration = 30):
 		"""
 		Method to set the brightness of the bulb
@@ -156,14 +155,16 @@ class YeeBulb:
 	
 	#NOT TESTED
 	def turn_on(self, effect = "sudden", duration = 30):
+		""" Method to turn on the bulb. """
 		params = "\"on\"" + ",\"" + str(effect) + "\"," + str(duration)
 		self.operate("set_power", params)
 
 	def turn_off(self, effect = "sudden", duration = 30):
+		""" Method to turn off the bulb. """
 		params = "\"off\"" + ",\"" + str(effect) + "\"," + str(duration)
 		self.operate("set_power", params)
 
 	def toggle(self):
-		"""Toggles on/off """
+		""" Toggles on/off. """
 		self.operate("toggle", "")
 
