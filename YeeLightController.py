@@ -11,7 +11,7 @@ from time import sleep
 ##Dictionary of discovered bulbs. {bulb_ip:YeeBulb)
 detected_bulbs = {} #Dictionary of detected light bulbs ip->bulb map
 bulb_id2ip = {} #{bulb_index:bulb_ip}
-current_command_id = 0
+supported_properties = ["power", "bright", "ct", "rgb", "hue", "sat", "color_mode", "flowing", "delayoff", "flow_params", "music_on", "name"]
 DEBUGGING = False	#Turn on/off debugging messages
 RUNNING = True	#Stops bulb detection loop
 MCAST_GRP = '239.255.255.250' #Multicast group
@@ -46,6 +46,7 @@ def print_cli_usage():
 	print("  ct|ColorTemp <idx> <temperature> <effect> <duration>: set color temperature")
 	print("  rgb <idx> <rgb value> <effect> <duration>: set rgb value")
 	print("  hue <idx> <hue> <sat> <effect> <duration>: set color hue")
+	print("  p|properties <idx> <param_1> <param_2> ... <param_n>")
 def get_param_value(data, param):
 	"""
 	Match line of 'param = value'
@@ -213,14 +214,35 @@ def handle_user_input():
 				except:
 					valid_cli=False
 		#MINE-------------------------------------------
+		#print("  p|properties <idx> <param_1> <param_2> ... <param_n>")
+		elif argv[0] == "p" or argv[0] == "properties":
+			if len(argv) < 3:
+				print("incorrect argc")
+				valid_cli=False
+			else:
+				try:
+					idx = int(float(argv[1]))	
+					ipb = bulb_id2ip[idx]
+					#Create a list of parameters
+					param_list = []
+					for i in range(2, len(argv)):
+						if argv[i] in supported_properties:
+							param_list.append(argv[i])
+						else:
+							print("Parameter \"{}\" is not supported".format(argv[i]))
+						print("suka")
+					detected_bulbs[ipb].get_properties(param_list)
+				except:
+					valid_cli=False
+
 		elif argv[0] == "ct" or argv[0] == "ColorTemp":
 			if len(argv) not in range(3, 6) or not (1700 <= int(argv[2]) <= 6500):
 				print("incorrect argc")
 				valid_cli=False
 			else:
-				idx = int(float(argv[1]))	
-				ipb = bulb_id2ip[idx]
 				try:
+					idx = int(float(argv[1]))	
+					ipb = bulb_id2ip[idx]
 					if len(argv) == 5:
 						detected_bulbs[ipb].set_ct(argv[2], argv[3], argv[4])
 					elif len(argv) == 4:
@@ -235,9 +257,9 @@ def handle_user_input():
 				print("incorrect argc")
 				valid_cli=False
 			else:
-				idx = int(float(argv[1]))	
-				ipb = bulb_id2ip[idx]
 				try:
+					idx = int(float(argv[1]))	
+					ipb = bulb_id2ip[idx]
 					if len(argv) == 5:
 						detected_bulbs[ipb].set_rgb(argv[2], argv[3], argv[4])
 					elif len(argv) == 4:
@@ -254,9 +276,9 @@ def handle_user_input():
 				print("incorrect argc")
 				valid_cli=False
 			else:
-				idx = int(float(argv[1]))	
-				ipb = bulb_id2ip[idx]
 				try:
+					idx = int(float(argv[1]))	
+					ipb = bulb_id2ip[idx]
 					if len(argv) == 6:
 						detected_bulbs[ipb].set_hue(argv[2], argv[3], argv[4], argv[5])#w
 					elif len(argv) == 5:

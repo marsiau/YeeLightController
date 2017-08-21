@@ -49,9 +49,9 @@ class YeeBulb:
 		return info
 	
 	@staticmethod
-	def get_param(data, param):
+	def get_val(data, param):
 		"""	Match line of 'param = value' """
-		param_re = re.compile(param + ":\s*([ -~]*)") #match all printable characters
+		param_re = re.compile(param + ":\[\s*([ -~]*)\]\}") #match all printable characters
 		match = param_re.search(data)
 		value = ""
 		if match != None:
@@ -72,14 +72,14 @@ class YeeBulb:
 		"""
 		if method == "get_prop":#NOT TESTED
 			param_list = params.split(',')
-			status_list = (YeeBulb.get_param(data, '"result"')).split(',')
-			response = "Current status:"
-			for i in range (0, len(param_list)):
+			status_list = (YeeBulb.get_val(data, '"result"')).split(',')
+			response = "Current status:\n"
+			for i in range(0, len(param_list)):
 				response += "\t" + param_list[i] + " = " + status_list[i] + "\n" 
 		elif '"ok"' in data:
 			response = "operations successful"
 		elif '"error"' in data:
-			respose = YeeBulb.get_param(data, '"error"')
+			respose = YeeBulb.get_val(data, '"error"')
 		else:
 			response = "Unknown error.\n Received data:\n" + data
 		return response
@@ -92,7 +92,7 @@ class YeeBulb:
 		"""
 		YeeBulb.display("\nOperating\n")
 		if not self.supports_method(method):
-			print("ERROR\nMethod is not supported.")
+			YeeBulb.display("ERROR\nMethod is not supported.")
 		else:
 			try:
 				tcp_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -104,18 +104,19 @@ class YeeBulb:
 				YeeBulb.display("\nDealing with response\n")
 				DataBytes = tcp_socket.recv(2048)
 				data = DataBytes.decode()#Decode bytes->str
-				YeeBulb.display("Data: " + data)
 				response_msg = YeeBulb.handle_result_message(method, params, data)
 				YeeBulb.display(response_msg)
 				tcp_socket.close()
 			except Exception as e:
 				YeeBulb.display("Unexpected error:", e)
 
-	def get_properties(req_params):
+	def get_properties(self, req_params):
 		"""	Method to retrieve current state of certain bulb parameters	"""
 		params = ""
 		for i in range(0, len(req_params)):
-			params += "\"" + req_params[i] +  "\", "
+			params += "\"" + req_params[i] + "\""
+			if i != len(req_params) - 1:
+				params +=", "
 		self.operate("get_prop", params)
 
 	def set_ct(self, ct_value, effect = "sudden", duration = 30):
