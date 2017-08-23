@@ -230,7 +230,6 @@ def handle_user_input():
 							param_list.append(argv[i])
 						else:
 							print("Parameter \"{}\" is not supported".format(argv[i]))
-						print("suka")
 					detected_bulbs[ipb].get_properties(param_list)
 				except:
 					valid_cli=False

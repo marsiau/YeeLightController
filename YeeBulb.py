@@ -62,15 +62,8 @@ class YeeBulb:
 	def handle_result_message(method, params, data):
 		"""
 		Method to handle the bulb's response to operation request.
-		Ex.:
-		{"id":1, "result":["ok"]}
-		{"id":2, "error":{"code":-1, “message”:"unsupported method"}}
-		Command “3” requested for current status
-		{"id":3, "method":”get_prop”, “params”:["power",“bright”]}
-		The result will be:
-		{"id":3, "result":["on","100"]}
 		"""
-		if method == "get_prop":#NOT TESTED
+		if method == "get_prop":
 			param_list = params.split(',')
 			status_list = (YeeBulb.get_val(data, '"result"')).split(',')
 			response = "Current status:\n"
@@ -90,7 +83,7 @@ class YeeBulb:
 		E.g. params="1"; params="\"smooth\"", params="1,\"smooth\",80"
 		E.x. { "id": 1, "method": "set_power", "params":["on", "smooth", 500]}
 		"""
-		YeeBulb.display("\nOperating\n")
+		YeeBulb.display("\nOperating")
 		if not self.supports_method(method):
 			YeeBulb.display("ERROR\nMethod is not supported.")
 		else:
@@ -101,23 +94,26 @@ class YeeBulb:
 				msg="{\"id\":" + str(self.next_id()) + ",\"method\":\""
 				msg += method + "\",\"params\":[" + params + "]}\r\n"
 				tcp_socket.send(msg.encode())
-				YeeBulb.display("\nDealing with response\n")
+				YeeBulb.display("Dealing with response")
 				DataBytes = tcp_socket.recv(2048)
 				data = DataBytes.decode()#Decode bytes->str
 				response_msg = YeeBulb.handle_result_message(method, params, data)
-				YeeBulb.display(response_msg)
+				YeeBulb.display(response_msg + "\n")
 				tcp_socket.close()
 			except Exception as e:
 				YeeBulb.display("Unexpected error:", e)
 
-	def get_properties(self, req_params):
-		"""	Method to retrieve current state of certain bulb parameters	"""
+	def get_state(self, req_params):
+		"""	Method to retrieve current state of specified bulb parameters	"""
 		params = ""
 		for i in range(0, len(req_params)):
 			params += "\"" + req_params[i] + "\""
 			if i != len(req_params) - 1:
-				params +=", "
+				params +=","
 		self.operate("get_prop", params)
+		
+	# def bulb_update():
+		# use get_properties to update bulb info
 
 	def set_ct(self, ct_value, effect = "sudden", duration = 30):
 		"""
@@ -127,32 +123,36 @@ class YeeBulb:
 		duration - total time of gradual change if smooth mode is selected (duration > 30 (ms))
 		"""
 		#TODO check if on
-		params = str(ct_value) +",\"" + str(effect) + "\"," + str(duration)
-		self.operate("set_ct_abx", params)
+		if 1700 <= ct_value <= 6500 and duration > 30:
+			params = str(ct_value) +",\"" + str(effect) + "\"," + str(duration)
+			self.operate("set_ct_abx", params)
 
 	def set_rgb(self, rgb_value, effect = "sudden", duration = 30):
 		"""
 		Metod to change the color of the bulb
 		rgb_value - the target color (decimal int;  0 <= rgb_value <= 16777215)
 		"""
-		params = str(rgb_value) +",\"" + str(effect) + "\"," + str(duration)
-		self.operate("set_rgb", params)
+		if 0 <= rgb_value <= 16777215 and duration >= 30:
+			params = str(rgb_value) +",\"" + str(effect) + "\"," + str(duration)
+			self.operate("set_rgb", params)
 
 	def set_hue(self, hue, sat = 0, effect = "sudden", duration = 30):
 		"""
 		hue - target hue value (decimal int; 0 <= hue <= 359) 
 		sat - target saturation value (int; 0 <= sat <= 100)
 		"""
-		params = str(hue) + "," + str(sat) +",\"" + str(effect) + "\"," + str(duration)
-		self.operate("set_hsv", params)
+		if 0 <= hue <= 359 and 0 <= sat <= 100 and duration >= 30:
+			params = str(hue) + "," + str(sat) +",\"" + str(effect) + "\"," + str(duration)
+			self.operate("set_hsv", params)
 	
 	def set_bright(self, bright, effect = "sudden", duration = 30):
 		"""
 		Method to set the brightness of the bulb
 		bright - target brightness (1 <= bright <= 100)
 		"""
-		params = str(bright) + ",\"" + str(effect) + "\"," + str(duration)
-		self.operate("set_bright", params)
+		if 1 <= bright <= 100 and duration >= 30:
+			params = str(bright) + ",\"" + str(effect) + "\"," + str(duration)
+			self.operate("set_bright", params)
 	
 	#NOT TESTED
 	def turn_on(self, effect = "sudden", duration = 30):
@@ -169,3 +169,26 @@ class YeeBulb:
 		""" Toggles on/off. """
 		self.operate("toggle", "")
 
+	def set_default(self):
+		"""Sets current bulb state as default. """
+		#TODO check if on
+		self.operate("set_default", "")
+
+	def start_cf(self, count, action, flow_expression):
+		"""
+		This method is used to start a color flow. Color flow is a series of smart
+		LED visible state changing. It can be brightness changing, color changing or color
+		temperature changing. This is the most powerful command. All recommended scenes,
+		e.g. Sunrise/Sunset effect is implemented using this method. With the flow expression, user
+		can actually “program” the light effect.
+		Args:
+			count: total number of visible state changing. 0 means infinite loop.
+			action: action taken after the flow is stopped.
+				0 means smart LED recover to the state before the color flow started.
+				1 means smart LED stay at the state when the flow is stopped.
+				2 means turn off the smart LED after the flow is stopped.
+			flow_expression: the expression of the state changing series.
+		
+		Request Example: {"id":1,"method":"start_cf","params":[ 4, 2, "1000, 2, 2700, 100, 500, 1,
+		255, 10, 5000, 7, 0,0, 500, 2, 5000, 1"]
+		"""
