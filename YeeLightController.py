@@ -17,7 +17,6 @@ RUNNING = True	#Stops bulb detection loop
 MCAST_GRP = '239.255.255.250' #Multicast group
 MCAST_PORT = 1982 #Multicast port
 
-
 #----------Sockets----------
 #Creating socket	
 scan_socket= socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -39,19 +38,21 @@ def print_cli_usage():
 	print("Usage:")
 	print("  q|quit: quit bulb manager")
 	print("  h|help: print this message")
+	print("  on: Turn the bulb on")
+	print("  off: Turn the bulb off")
 	print("  t|toggle <idx>: toggle bulb indicated by idx")
 	print("  b|bright <idx> <bright>: set brightness of bulb with label <idx>")
 	print("  r|refresh: refresh bulb list")
 	print("  l|list: list all managed bulbs")
 	print("  ct|ColorTemp <idx> <temperature> <effect> <duration>: set color temperature")
-	print("  rgb <idx> <rgb value> <effect> <duration>: set rgb value")
-	print("  hue <idx> <hue> <sat> <effect> <duration>: set color hue")
-	print("  p|properties <idx> <param_1> <param_2> ... <param_n>")
+	print("  rgb <idx> <rgb value> <effect> <duration>: set rgb value (0 <= rgb_value <= 16777215)")
+	print("  hue <idx> <hue> <sat> <effect> <duration>: set color hue (0 <= hue <= 359,  0 <= sat <= 100)")
+	print("  p|param <idx> <param_1> <param_2> ... <param_n>: get current bulb parameter state")
 def get_param_value(data, param):
 	"""
 	Match line of 'param = value'
 	"""
-	param_re = re.compile(param+":\s*([ -~]*)") #match all printable characters
+	param_re = re.compile(param + ":\s*([ -~]*)") #match all printable characters
 	match = param_re.search(data)
 	value=""
 	if match != None:
@@ -88,7 +89,7 @@ def handle_search_response(data):
 		debug( "invalid data received: " + data )
 		return
 
-	bulb_ip = match.group(1) #bulb_ip = /192.168.1.239(Ex)
+	bulb_ip = match.group(1)
 	#Check if bulb is already known
 	if bulb_ip in detected_bulbs:
 		#If known, grab an id
@@ -104,9 +105,8 @@ def handle_search_response(data):
 	rgb = get_param_value(data, "rgb")
 	supported = get_param_value(data, "support") #Grab supported methods
 	#Create a new entry for the bulb
-	
+	bulb_id2ip[int(bulb_id)] = bulb_ip
 	detected_bulbs[bulb_ip] = YeeBulb(bulb_id, bulb_ip, bulb_port, model, power, bright, rgb, supported.split())
-	bulb_id2ip[bulb_id] = bulb_ip
 
 def bulbs_detection_loop():
 	"""	A standalone thread broadcasting search request and listening on all responses.	"""
@@ -202,93 +202,114 @@ def handle_user_input():
 				except:
 					valid_cli=False
 		elif argv[0] == "b" or argv[0] == "bright":
-			if len(argv) != 3:
+			if not (3 <= len(argv) <= 5):
 				print("incorrect argc")
 				valid_cli=False
 			else:
 				try:
-					idx = int(float(argv[1]))
-					#TODO limits for brightness
+					idx = int(argv[1])
 					ipb = bulb_id2ip[idx]
-					detected_bulbs[ipb].set_bright(argv[2])
-				except:
+					response = (detected_bulbs[ipb]).set_bright(*argv[2:])
+					print(response[1])
+				except Exception as e:
+					print(e)
 					valid_cli=False
 		#MINE-------------------------------------------
-		#print("  p|properties <idx> <param_1> <param_2> ... <param_n>")
-		elif argv[0] == "p" or argv[0] == "properties":
+		elif argv[0] == "p" or argv[0] == "param":
 			if len(argv) < 3:
 				print("incorrect argc")
 				valid_cli=False
 			else:
 				try:
-					idx = int(float(argv[1]))	
+					idx = int(argv[1])
 					ipb = bulb_id2ip[idx]
-					#Create a list of parameters
-					param_list = []
-					for i in range(2, len(argv)):
-						if argv[i] in supported_properties:
-							param_list.append(argv[i])
-						else:
-							print("Parameter \"{}\" is not supported".format(argv[i]))
-					detected_bulbs[ipb].get_properties(param_list)
-				except:
+					param_list = argv[2:] #Create a list of parameters
+					response = (detected_bulbs[ipb]).get_state(param_list)
+					state_list = response[1]
+					for i in range(0, len(state_list)):
+						print("\t" + param_list[i] + " = " + state_list[i])
+				except Exception as e:
+					print("Error: ", e)
 					valid_cli=False
 
 		elif argv[0] == "ct" or argv[0] == "ColorTemp":
-			if len(argv) not in range(3, 6) or not (1700 <= int(argv[2]) <= 6500):
+			if not (3 <= len(argv) <= 5):
 				print("incorrect argc")
 				valid_cli=False
 			else:
 				try:
-					idx = int(float(argv[1]))	
+					idx = int(argv[1])
 					ipb = bulb_id2ip[idx]
-					if len(argv) == 5:
-						detected_bulbs[ipb].set_ct(argv[2], argv[3], argv[4])
-					elif len(argv) == 4:
-						detected_bulbs[ipb].set_ct(argv[2], argv[3])
-					else:
-						detected_bulbs[ipb].set_ct(argv[2])
-				except:
+					response = detected_bulbs[ipb].set_ct(*argv[2:])#Using *args to unpack a list and pass to function (Python black magic)
+					print(response[1])
+				except Exception as e:
+					print(e)
 					valid_cli=False
 		
 		elif argv[0] == "rgb":
-			if len(argv) not in range(3, 6) or not (0 <= int(argv[2]) <= 16777215):
+			if not (3 <= len(argv) <= 5):
 				print("incorrect argc")
 				valid_cli=False
 			else:
 				try:
-					idx = int(float(argv[1]))	
+					idx = int(argv[1])
 					ipb = bulb_id2ip[idx]
-					if len(argv) == 5:
-						detected_bulbs[ipb].set_rgb(argv[2], argv[3], argv[4])
-					elif len(argv) == 4:
-						detected_bulbs[ipb].set_rgb(argv[2], argv[3])
-					else:
-						detected_bulbs[ipb].set_rgb(argv[2])
-				except:
+					detected_bulbs[ipb].set_rgb(*argv[2:])
+				except Exception as e:
+					print(e)
 					valid_cli=False
 
 		elif argv[0] == "hue":
-			if len(argv) < 0 or len(argv) > 6 or \
-				int(argv[2]) < 0 or int(argv[2]) > 359 or \
-				len(argv) > 3 and (int(argv[3]) < 0 or int(argv[3]) > 100):
+			if not (3 <= len(argv) <= 6):
 				print("incorrect argc")
 				valid_cli=False
 			else:
 				try:
-					idx = int(float(argv[1]))	
+					idx = int(argv[1])
 					ipb = bulb_id2ip[idx]
-					if len(argv) == 6:
-						detected_bulbs[ipb].set_hue(argv[2], argv[3], argv[4], argv[5])#w
-					elif len(argv) == 5:
-						detected_bulbs[ipb].set_hue(argv[2], argv[3], argv[4])#w
-					elif len(argv) == 4:
-						detected_bulbs[ipb].set_hue(argv[2], argv[3])
-					else:
-						detected_bulbs[ipb].set_hue(argv[2])
-				except:
+					detected_bulbs[ipb].set_hue(*argv[2:])
+				except Exception as e:
+					print(e)
 					valid_cli=False
-
+		elif argv[0] == "on":
+			if len(argv) != 2:
+				print("incorrect argc")
+				valid_cli=False
+			else:
+				try:
+					idx = int(argv[1])
+					ipb = bulb_id2ip[idx]
+					detected_bulbs[ipb].turn_on()
+				except Exception as e:
+					print(e)
+					valid_cli=False
+		
+		elif argv[0] == "off":
+			if len(argv) != 2:
+				print("incorrect argc")
+				valid_cli=False
+			else:
+				try:
+					idx = int(argv[1])
+					ipb = bulb_id2ip[idx]
+					detected_bulbs[ipb].turn_off()
+				except Exception as e:
+					print(e)
+					valid_cli=False			
+		
+	#---not tested
+		elif argv[0] == "set":
+			if len(argv) != 2:
+				print("incorrect argc")
+				valid_cli=False
+			else:
+				try:
+					idx = int(argv[1])
+					ipb = bulb_id2ip[idx]
+					detected_bulbs[ipb].set_default()
+				except Exception as e:
+					print(e)
+					valid_cli=False
 		#MINE-------------------------------------------END
 		else:
 			valid_cli=False

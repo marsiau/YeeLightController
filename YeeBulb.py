@@ -3,6 +3,11 @@ import re
 
 #Bulb class
 class YeeBulb:
+	""" 
+	All functions return a tuple: result_tup(x, y)
+	x - True|False depending whether the function executed successfully
+	y - List of requested params|"ok"|error message
+	"""
 	DISPLAY_MSG = True	#Turn on/off debugging messages
 	def __init__(self, bulb_id, bulb_ip, bulb_port, model, power, bright, rgb, methods):
 		self.id = bulb_id
@@ -11,7 +16,12 @@ class YeeBulb:
 		self.model = model
 		self.power = power
 		self.bright = bright
+		#self.color_mode = color_mode
+		#self.ct = ct
 		self.rgb = rgb
+		#self.hue = hue
+		#self.sat = sat
+		#self.name = name
 		self.methods = methods #list of methods 
 
 		self.cmd_id = int(0)
@@ -35,7 +45,6 @@ class YeeBulb:
 
 	def info(self):
 		"""Returns bulb information"""
-		#TODO tidy up the printing
 		info = ("Id = " + str(self.id)
 				+",\nIP = " + str(self.ip)
 				+",\nPort = " + str(self.port) 
@@ -51,7 +60,7 @@ class YeeBulb:
 	@staticmethod
 	def get_val(data, param):
 		"""	Match line of 'param = value' """
-		param_re = re.compile(param + ":\[\s*([ -~]*)\]\}") #match all printable characters
+		param_re = re.compile(param)
 		match = param_re.search(data)
 		value = ""
 		if match != None:
@@ -59,22 +68,18 @@ class YeeBulb:
 			return value
 
 	@staticmethod
-	def handle_result_message(method, params, data):
+	def handle_result_message(method, params, data): #TODO merge this into self.operate()?
 		"""
 		Method to handle the bulb's response to operation request.
 		"""
-		if method == "get_prop":
-			param_list = params.split(',')
-			status_list = (YeeBulb.get_val(data, '"result"')).split(',')
-			response = "Current status:\n"
-			for i in range(0, len(param_list)):
-				response += "\t" + param_list[i] + " = " + status_list[i] + "\n" 
+		if '"error"' in data:
+			respose = (False, YeeBulb.get_val(data, '"message":(.*)\}\}'))
+		elif method == "get_prop":
+			response = (True, (YeeBulb.get_val(data, '"result":\[([ -~]*)\]\}')).split(',') )
 		elif '"ok"' in data:
-			response = "operations successful"
-		elif '"error"' in data:
-			respose = YeeBulb.get_val(data, '"error"')
+			response = (True, "ok")
 		else:
-			response = "Unknown error.\n Received data:\n" + data
+			response = (False, "Unknown error.\n Received data:\n" + data)
 		return response
  
 	def operate(self, method, params):
@@ -94,26 +99,35 @@ class YeeBulb:
 				msg="{\"id\":" + str(self.next_id()) + ",\"method\":\""
 				msg += method + "\",\"params\":[" + params + "]}\r\n"
 				tcp_socket.send(msg.encode())
-				YeeBulb.display("Dealing with response")
+
+				YeeBulb.display("Handling response")
 				DataBytes = tcp_socket.recv(2048)
 				data = DataBytes.decode()#Decode bytes->str
-				response_msg = YeeBulb.handle_result_message(method, params, data)
-				YeeBulb.display(response_msg + "\n")
+				result = YeeBulb.handle_result_message(method, params, data)
 				tcp_socket.close()
+				return result
 			except Exception as e:
-				YeeBulb.display("Unexpected error:", e)
+				YeeBulb.display("Unexpected error:" + e)
+				return (False, e)
 
-	def get_state(self, req_params):
+	def get_state(self, req_params = []):
 		"""	Method to retrieve current state of specified bulb parameters	"""
 		params = ""
 		for i in range(0, len(req_params)):
 			params += "\"" + req_params[i] + "\""
 			if i != len(req_params) - 1:
 				params +=","
-		self.operate("get_prop", params)
-		
-	# def bulb_update():
-		# use get_properties to update bulb info
+		return self.operate("get_prop", params)
+
+	def bulb_update():
+		""" Method to update bulb status """
+		params = ["power", "bright", "rgb"] #TODO include all parameters
+		result = self.operate("get_prop", params)
+		if result[0]:
+			states = result[1]
+			self.power = states[0]
+			self.bright = states[1]
+			self.rgb = states[2]
 
 	def set_ct(self, ct_value, effect = "sudden", duration = 30):
 		"""
@@ -121,38 +135,45 @@ class YeeBulb:
 		ct_value - targeted color temperature (1700 <= ct_value <= 6500 (k))
 		effect - sudden/smooth
 		duration - total time of gradual change if smooth mode is selected (duration > 30 (ms))
-		"""
-		#TODO check if on
-		if 1700 <= ct_value <= 6500 and duration > 30:
+		"""	
+		if 1700 <= int(ct_value) <= 6500 and int(duration) >= 30:
 			params = str(ct_value) +",\"" + str(effect) + "\"," + str(duration)
-			self.operate("set_ct_abx", params)
+			return self.operate("set_ct_abx", params)
+		else:
+			return (False, "Parameters out of range")
 
 	def set_rgb(self, rgb_value, effect = "sudden", duration = 30):
 		"""
 		Metod to change the color of the bulb
 		rgb_value - the target color (decimal int;  0 <= rgb_value <= 16777215)
 		"""
-		if 0 <= rgb_value <= 16777215 and duration >= 30:
+		if 0 <= int(rgb_value) <= 16777215 and int(duration) >= 30:
 			params = str(rgb_value) +",\"" + str(effect) + "\"," + str(duration)
-			self.operate("set_rgb", params)
+			return self.operate("set_rgb", params)
+		else:
+			return (False, "Parameters out of range")
 
 	def set_hue(self, hue, sat = 0, effect = "sudden", duration = 30):
 		"""
 		hue - target hue value (decimal int; 0 <= hue <= 359) 
 		sat - target saturation value (int; 0 <= sat <= 100)
 		"""
-		if 0 <= hue <= 359 and 0 <= sat <= 100 and duration >= 30:
+		if 0 <= int(hue) <= 359 and 0 <= int(sat) <= 100 and int(duration) >= 30:
 			params = str(hue) + "," + str(sat) +",\"" + str(effect) + "\"," + str(duration)
-			self.operate("set_hsv", params)
-	
+			return self.operate("set_hsv", params)
+		else:
+			return (False, "Parameters out of range")
+
 	def set_bright(self, bright, effect = "sudden", duration = 30):
 		"""
 		Method to set the brightness of the bulb
 		bright - target brightness (1 <= bright <= 100)
 		"""
-		if 1 <= bright <= 100 and duration >= 30:
+		if (1 <= int(bright) <= 100) and (int(duration) >= 30):
 			params = str(bright) + ",\"" + str(effect) + "\"," + str(duration)
-			self.operate("set_bright", params)
+			return self.operate("set_bright", params)
+		else:
+			return (False, "Parameters out of range")
 	
 	#NOT TESTED
 	def turn_on(self, effect = "sudden", duration = 30):
@@ -171,7 +192,6 @@ class YeeBulb:
 
 	def set_default(self):
 		"""Sets current bulb state as default. """
-		#TODO check if on
 		self.operate("set_default", "")
 
 	def start_cf(self, count, action, flow_expression):
@@ -189,6 +209,6 @@ class YeeBulb:
 				2 means turn off the smart LED after the flow is stopped.
 			flow_expression: the expression of the state changing series.
 		
-		Request Example: {"id":1,"method":"start_cf","params":[ 4, 2, "1000, 2, 2700, 100, 500, 1,
-		255, 10, 5000, 7, 0,0, 500, 2, 5000, 1"]
+		Request Example: 
+		{"id":1,"method":"start_cf","params":[ 4, 2, "1000, 2, 2700, 100, 500, 1,255, 10, 5000, 7, 0,0, 500, 2, 5000, 1"]
 		"""
