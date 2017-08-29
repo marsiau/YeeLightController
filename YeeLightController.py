@@ -100,13 +100,10 @@ def handle_search_response(data):
 
 	bulb_port = match.group(3)
 	model = get_param_value(data, "model")
-	power = get_param_value(data, "power")
-	bright = get_param_value(data, "bright")
-	rgb = get_param_value(data, "rgb")
 	supported = get_param_value(data, "support") #Grab supported methods
 	#Create a new entry for the bulb
 	bulb_id2ip[int(bulb_id)] = bulb_ip
-	detected_bulbs[bulb_ip] = YeeBulb(bulb_id, bulb_ip, bulb_port, model, power, bright, rgb, supported.split())
+	detected_bulbs[bulb_ip] = YeeBulb(bulb_id, bulb_ip, bulb_port, model, supported.split())
 
 def bulbs_detection_loop():
 	"""	A standalone thread broadcasting search request and listening on all responses.	"""

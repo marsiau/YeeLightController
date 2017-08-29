@@ -8,24 +8,17 @@ class YeeBulb:
 	x - True|False depending whether the function executed successfully
 	y - List of requested params|"ok"|error message
 	"""
-	DISPLAY_MSG = True	#Turn on/off debugging messages
-	def __init__(self, bulb_id, bulb_ip, bulb_port, model, power, bright, rgb, methods):
+	DISPLAY_MSG = True		#Turn on/off YeeBulb messages
+	HANDLE_RESPONSE = True  #Turn on/off handling response messages
+	supported_properties = ["power", "bright", "ct", "rgb", "hue", "sat", "color_mode", "flowing", "delayoff", "flow_params", "music_on", "name"]
+	def __init__(self, bulb_id, bulb_ip, bulb_port, model, methods):
 		self.id = bulb_id
 		self.ip = bulb_ip
 		self.port = bulb_port
 		self.model = model
-		self.power = power
-		self.bright = bright
-		#self.color_mode = color_mode
-		#self.ct = ct
-		self.rgb = rgb
-		#self.hue = hue
-		#self.sat = sat
-		#self.name = name
-		self.methods = methods #list of methods 
-
+		self.name = name #Could be used instead of id to represent the bulb
+		self.methods = methods
 		self.cmd_id = int(0)
-		#self.socket/???
 
 	@classmethod
 	def display(cls, 	msg):
@@ -45,18 +38,22 @@ class YeeBulb:
 
 	def info(self):
 		"""Returns bulb information"""
+		#Including local info
 		info = ("Id = " + str(self.id)
 				+",\nIP = " + str(self.ip)
 				+",\nPort = " + str(self.port) 
-				+",\nModel = " + str(self.model)
-				+",\nPower = " + str(self.power)
-				+",\nBrightness = " + str(self.bright)
-				+",\nRGB = " + str(self.rgb)
-				+",\nMethods =\n")
+				+",\nModel = " + str(self.model))
+		#Collecting local states
+		response = get_state(YeeBulb.supported_properties)
+		current_states = response[1]
+		for p in supported_properties:
+			info += ",\n" + supported_properties[p] + " = " + current_states[p]
+		#Adding supported methods
+		info += ",\nMethods =\n"
 		for i in range(0, len(self.methods)):
 			info+="\t"+self.methods[i]+"\n"
 		return info
-	
+
 	@staticmethod
 	def get_val(data, param):
 		"""	Match line of 'param = value' """
@@ -68,7 +65,7 @@ class YeeBulb:
 			return value
 
 	@staticmethod
-	def handle_result_message(method, params, data): #TODO merge this into self.operate()?
+	def handle_result_message(method, params, data):
 		"""
 		Method to handle the bulb's response to operation request.
 		"""
@@ -100,10 +97,13 @@ class YeeBulb:
 				msg += method + "\",\"params\":[" + params + "]}\r\n"
 				tcp_socket.send(msg.encode())
 
-				YeeBulb.display("Handling response")
-				DataBytes = tcp_socket.recv(2048)
-				data = DataBytes.decode()#Decode bytes->str
-				result = YeeBulb.handle_result_message(method, params, data)
+				if YeeBulb.HANDLE_RESPONSE:
+					YeeBulb.display("Handling response")
+					DataBytes = tcp_socket.recv(2048)
+					data = DataBytes.decode()#Decode bytes->str
+					result = YeeBulb.handle_result_message(method, params, data)
+				else:
+					result = (True, "")
 				tcp_socket.close()
 				return result
 			except Exception as e:
@@ -118,16 +118,6 @@ class YeeBulb:
 			if i != len(req_params) - 1:
 				params +=","
 		return self.operate("get_prop", params)
-
-	def bulb_update():
-		""" Method to update bulb status """
-		params = ["power", "bright", "rgb"] #TODO include all parameters
-		result = self.operate("get_prop", params)
-		if result[0]:
-			states = result[1]
-			self.power = states[0]
-			self.bright = states[1]
-			self.rgb = states[2]
 
 	def set_ct(self, ct_value, effect = "sudden", duration = 30):
 		"""
@@ -217,39 +207,38 @@ class YeeBulb:
 		"""
 		#TODO check if "flow_expressions" corelate with "count"
 		params = str(count) +"," + str(action)
-		for expression in flow_expressions
+		for expression in flow_expressions:
 			params += ',' + expression
 		return self.operate("start_cf" )
 	
-	def stop_cf(self)
-	""" Method to stop the color flow """
+	def stop_cf(self):
+		""" Method to stop the color flow """
 		return self.operate("stop_cf", "")
 	
-	def set_scene(self, class_type, *args)
-	 """
-	 This method is used to set the smart LED directly to specified state.
-	 If the smart LED is off, then it will turn on the smart LED firstly and then apply the specified command
-	 
-	Args:
-		class_type: "color", "hsv", "ct", "cf", "auto_dealy_off".
-			"color": change the smart LED to specified color and brightness.
-			"hsv": change the smart LED to specified color and brightness.
-			"ct": change the smart LED to specified ct and brightness.
-			"cf": start a color flow in specified fashion.
-			"auto_delay_off": turn on the smart LED to specified brightness and start a sleep timer to turn off the light after the specified time
-		args: class specific.
-	 """
-	 #TODO check if arg is in range for specific class_type
-	 class_list =["color", "hsv", "ct", "cf", "auto_delay_off"]
-	 if class_type in class_list:
-		 params = str(class_type)
-		 for arg in args:
-			 param += str(arg) + ','
-		return self.operate("set_scene", params)
-	else:
-		return (False, "Parameters out of range")
-	
-	def cron_add(self, value, mode = 0)
+	def set_scene(self, class_type, *args):
+		"""
+		This method is used to set the smart LED directly to specified state.
+		If the smart LED is off, then it will turn on the smart LED firstly and then apply the specified command.
+		Args:
+			class_type: "color", "hsv", "ct", "cf", "auto_dealy_off".
+				"color": change the smart LED to specified color and brightness.
+				"hsv": change the smart LED to specified color and brightness.
+				"ct": change the smart LED to specified ct and brightness.
+				"cf": start a color flow in specified fashion.
+				"auto_delay_off": turn on the smart LED to specified brightness and start a sleep timer to turn off the light after the specified time
+			args: class specific.
+		"""
+		#TODO check if arg is in range for specific class_type
+		class_list =["color", "hsv", "ct", "cf", "auto_delay_off"]
+		if class_type in class_list:
+			params = str(class_type)
+			for arg in args:
+				param += str(arg) + ','
+			return self.operate("set_scene", params)
+		else:
+			return (False, "Parameters out of range")
+
+	def cron_add(self, value, mode = 0):
 		"""
 		This method is used to start a timer job on the smart LED.
 		Args:	
@@ -259,63 +248,75 @@ class YeeBulb:
 		params = str(mode) + ',' +str(value)
 		return self.operate("cron_add", params)
 
-	def cron_get(self, mode = 0)
-	"""
-	This method is used to retrieve the setting of the current cron job of the specified type. 
-	Args:
-		mode: type of the cron job. (currently only support 0).
-	"""
-	return self.operate("cron_get", str(mode))
+	def cron_get(self, mode = 0):
+		"""
+		This method is used to retrieve the setting of the current cron job of the specified type. 
+		Args:
+			mode: type of the cron job. (currently only support 0).
+		"""
+		return self.operate("cron_get", str(mode))
 
-	def cron_del(self, mode)
-	"""
-	This method is used to stop the specified cron job.
-	Args:
-		mode: the type of the cron job. (currently only support 0).
-	"""
-	return self.operate("cron_del", str(mode))
+	def cron_del(self, mode):
+		"""
+		This method is used to stop the specified cron job.
+		Args:
+			mode: the type of the cron job. (currently only support 0).
+		"""
+		return self.operate("cron_del", str(mode))
 
-	def set_adjust(self, prop, action = "circle")
-	"""
-	This method is used to change brightness, CT or color of a smart LED without knowing the current value.
-	Args:
-		action: direction of the adjustment. The valid values:
-			“increase": increase the specified property
-			“decrease": decrease the specified property
-			“circle": increase the specified property, after it reaches the max value, go back to minimum value.
-		prop: property to adjust. The valid values:
-			“bright": adjust brightness.
-			“ct": adjust color temperature.
-			“color": adjust color. (When “prop" is “color", the “action" can only be “circle", otherwise, it will be deemed as invalid request.)
-	"""
-	params = action + ',' + prop
-	return self.operate("set_adjust", params)
+	def set_adjust(self, prop, action = "circle"):
+		"""
+		This method is used to change brightness, CT or color of a smart LED without knowing the current value.
+		Args:
+			action: direction of the adjustment. The valid values:
+				“increase": increase the specified property
+				“decrease": decrease the specified property
+				“circle": increase the specified property, after it reaches the max value, go back to minimum value.
+			prop: property to adjust. The valid values:
+				“bright": adjust brightness.
+				“ct": adjust color temperature.
+				“color": adjust color. (When “prop" is “color", the “action" can only be “circle", otherwise, it will be deemed as invalid request.)
+		"""
+		params = action + ',' + prop
+		return self.operate("set_adjust", params)
 
-	def set_music(self, action, host, port)
-	"""
-	This method is used to start or stop music mode on a device. Under music mode, no property will be reported and no message quota is checked.
-	Args:
-		action: action of set_music command. The valid values:
-			0: turn off music mode.
-			1: turn on music mode.
-		host: IP address of the music server.
-		port: TCP port music application is listening on.
+	def set_music(self, action, host, port):
+		"""
+		This method is used to start or stop music mode on a device. Under music mode, no property will be reported and no message quota is checked.
+		Args:
+			action: action of set_music command. The valid values:
+				0: turn off music mode.
+				1: turn on music mode.
+			host: IP address of the music server.
+			port: TCP port music application is listening on.
 
-	Note:
-		When control device wants to start music mode, it needs start a TCP 
-		server firstly and then call “set_music” command to let the device know the IP and Port of the
-		TCP listen socket. After the command is received, LED device will try to connect the specified
-		peer address. If the TCP connection is established successfully, then control device can
-		send all supported commands through this channel without any limits to simulate any music effect.
-		The control device can stop music mode by explicitly sending a stop command or by closing the socket.
-	"""
-	pass
+		Note:
+			When control device wants to start music mode, it needs start a TCP 
+			server firstly and then call “set_music” command to let the device know the IP and Port of the
+			TCP listen socket. After the command is received, LED device will try to connect the specified
+			peer address. If the TCP connection is established successfully, then control device can
+			send all supported commands through this channel without any limits to simulate any music effect.
+			The control device can stop music mode by explicitly sending a stop command or by closing the socket.
 
-	def set_name(self, name)
-	"""
-	This method is used to name the device. The name will be stored on the device and reported in discovering response.
-	User can also read the name through “get_prop” method.
-	Args:
-		name: new name of the bulb
-	"""
-	return self.operate("set_name", str(name))
+		TEMP Notes:
+			*possibly create a new thread pointing to music_mode()
+			*split set_music() into music_mode_start() and music_mode_stop()
+		"""
+		pass
+		#Turn music mode on
+		if int(action) == 1:
+			YeeBulb.DISPLAY_MSG = False		#Turn off YeeBulb messages
+			YeeBulb.HANDLE_RESPONSE = False #Turn off handling response messages
+		#Turn music mode off
+		else:
+			YeeBulb.DISPLAY_MSG = True		#Turn on YeeBulb messages
+			YeeBulb.HANDLE_RESPONSE = True  #Turn on handling response messages
+
+	def set_name(self, name):
+		"""
+		This method is used to name the device. The name will be stored on the device and reported in discovering response.
+		User can also read the name through “get_prop” method.
+		Args:
+			name: new name of the bulb
+		"""
+		return self.operate("set_name", str(name))
