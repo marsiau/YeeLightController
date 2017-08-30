@@ -11,7 +11,7 @@ class YeeBulb:
 	DISPLAY_MSG = True		#Turn on/off YeeBulb messages
 	HANDLE_RESPONSE = True  #Turn on/off handling response messages
 	supported_properties = ["power", "bright", "ct", "rgb", "hue", "sat", "color_mode", "flowing", "delayoff", "flow_params", "music_on", "name"]
-	def __init__(self, bulb_id, bulb_ip, bulb_port, model, methods):
+	def __init__(self, bulb_id, bulb_ip, bulb_port, model, name, methods):
 		self.id = bulb_id
 		self.ip = bulb_ip
 		self.port = bulb_port
@@ -40,16 +40,17 @@ class YeeBulb:
 		"""Returns bulb information"""
 		#Including local info
 		info = ("Id = " + str(self.id)
-				+",\nIP = " + str(self.ip)
-				+",\nPort = " + str(self.port) 
-				+",\nModel = " + str(self.model))
+				+"\nIP = " + str(self.ip)
+				+"\nPort = " + str(self.port) 
+				+"\nModel = " + str(self.model))
 		#Collecting local states
-		response = get_state(YeeBulb.supported_properties)
+		response = self.get_state(YeeBulb.supported_properties)
 		current_states = response[1]
-		for p in supported_properties:
-			info += ",\n" + supported_properties[p] + " = " + current_states[p]
+
+		for prop, state in zip(YeeBulb.supported_properties, current_states):
+			info += "\n" + prop + " = " + state
 		#Adding supported methods
-		info += ",\nMethods =\n"
+		info += "\nMethods =\n"
 		for i in range(0, len(self.methods)):
 			info+="\t"+self.methods[i]+"\n"
 		return info
@@ -65,14 +66,17 @@ class YeeBulb:
 			return value
 
 	@staticmethod
-	def handle_result_message(method, params, data):
+	def handle_result_message(method, data):
 		"""
 		Method to handle the bulb's response to operation request.
 		"""
+		print(data)
 		if '"error"' in data:
-			respose = (False, YeeBulb.get_val(data, '"message":(.*)\}\}'))
+			#respose = (False, YeeBulb.get_val(data, '"message":(.*)\}\}'))
+			print("yee")
 		elif method == "get_prop":
-			response = (True, (YeeBulb.get_val(data, '"result":\[([ -~]*)\]\}')).split(',') )
+			result = YeeBulb.get_val(data, '"result":\[([ -~]*)\]\}').replace('"', '') #Retrieve the result and remove quotes
+			response = (True, result.split(','))
 		elif '"ok"' in data:
 			response = (True, "ok")
 		else:
@@ -101,7 +105,7 @@ class YeeBulb:
 					YeeBulb.display("Handling response")
 					DataBytes = tcp_socket.recv(2048)
 					data = DataBytes.decode()#Decode bytes->str
-					result = YeeBulb.handle_result_message(method, params, data)
+					result = YeeBulb.handle_result_message(method, data)
 				else:
 					result = (True, "")
 				tcp_socket.close()
@@ -179,11 +183,11 @@ class YeeBulb:
 		""" Toggles on/off. """
 		self.operate("toggle", "")
 
-	#NOT TESTED
 	def set_default(self):
 		"""Sets current bulb state as default. """
 		self.operate("set_default", "")
 
+	#NOT TESTED
 	def start_cf(self, count, action, *flow_expressions):
 		"""
 		This method is used to start a color flow. Color flow is a series of smart
@@ -245,7 +249,7 @@ class YeeBulb:
 			value: is the length of the timer (in minutes).
 			mode: currently can only be 0. (means power off)
 		"""
-		params = str(mode) + ',' +str(value)
+		params = str(mode) + ',' + str(value)
 		return self.operate("cron_add", params)
 
 	def cron_get(self, mode = 0):
@@ -265,6 +269,8 @@ class YeeBulb:
 		return self.operate("cron_del", str(mode))
 
 	def set_adjust(self, prop, action = "circle"):
+		#NOT working, seems like a bug in the bulb firmware
+		#{"id":(null), "error":{"code":-1, "message":"invalid command"}}
 		"""
 		This method is used to change brightness, CT or color of a smart LED without knowing the current value.
 		Args:
@@ -277,7 +283,7 @@ class YeeBulb:
 				“ct": adjust color temperature.
 				“color": adjust color. (When “prop" is “color", the “action" can only be “circle", otherwise, it will be deemed as invalid request.)
 		"""
-		params = action + ',' + prop
+		params = str(action) + ',' + str(prop)
 		return self.operate("set_adjust", params)
 
 	def set_music(self, action, host, port):

@@ -44,10 +44,12 @@ def print_cli_usage():
 	print("  b|bright <idx> <bright>: set brightness of bulb with label <idx>")
 	print("  r|refresh: refresh bulb list")
 	print("  l|list: list all managed bulbs")
-	print("  ct|ColorTemp <idx> <temperature> <effect> <duration>: set color temperature")
+	print("  ct|ColorTemp <idx> <temperature> <effect> <duration>: set color temperature (1700K <= ct_value <= 6500K")
 	print("  rgb <idx> <rgb value> <effect> <duration>: set rgb value (0 <= rgb_value <= 16777215)")
 	print("  hue <idx> <hue> <sat> <effect> <duration>: set color hue (0 <= hue <= 359,  0 <= sat <= 100)")
 	print("  p|param <idx> <param_1> <param_2> ... <param_n>: get current bulb parameter state")
+	print("  s|SetDef: Sets current bulb state as default.")
+	print("  a|adjust: <idx> <property> <action> This method is used to change brightness, CT or color of a smart LED")
 def get_param_value(data, param):
 	"""
 	Match line of 'param = value'
@@ -100,10 +102,11 @@ def handle_search_response(data):
 
 	bulb_port = match.group(3)
 	model = get_param_value(data, "model")
+	name = get_param_value(data, "name")
 	supported = get_param_value(data, "support") #Grab supported methods
 	#Create a new entry for the bulb
 	bulb_id2ip[int(bulb_id)] = bulb_ip
-	detected_bulbs[bulb_ip] = YeeBulb(bulb_id, bulb_ip, bulb_port, model, supported.split())
+	detected_bulbs[bulb_ip] = YeeBulb(bulb_id, bulb_ip, bulb_port, model, name, supported.split())
 
 def bulbs_detection_loop():
 	"""	A standalone thread broadcasting search request and listening on all responses.	"""
@@ -295,7 +298,7 @@ def handle_user_input():
 					valid_cli=False			
 		
 	#---not tested
-		elif argv[0] == "set":
+		elif argv[0] == "set" or argv[0] == "SetDef":
 			if len(argv) != 2:
 				print("incorrect argc")
 				valid_cli=False
@@ -307,6 +310,20 @@ def handle_user_input():
 				except Exception as e:
 					print(e)
 					valid_cli=False
+
+		elif argv[0] == "a" or argv[0] == "adjust":
+			if len(argv) != 4:
+				print("incorrect argc")
+				valid_cli=False
+			else:
+				try:
+					idx = int(argv[1])
+					ipb = bulb_id2ip[idx]
+					detected_bulbs[ipb].set_adjust(*argv[2:])
+				except Exception as e:
+					print(e)
+					valid_cli=False
+		
 		#MINE-------------------------------------------END
 		else:
 			valid_cli=False
