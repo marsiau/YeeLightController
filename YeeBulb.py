@@ -209,11 +209,15 @@ class YeeBulb:
 		Request Example: 
 		{"id":1,"method":"start_cf","params":[ 4, 2, "1000, 2, 2700, 100, 500, 1,255, 10, 5000, 7, 0,0, 500, 2, 5000, 1"]
 		"""
-		#TODO check if "flow_expressions" corelate with "count"
-		params = str(count) +"," + str(action)
-		for expression in flow_expressions:
-			params += ',' + expression
-		return self.operate("start_cf" )
+		if (flow_expressions % 4 == 0) and (flow_expressions / 4 == count): #Check if "flow_expressions" corelate with "count"
+			params = str(count) +"," + str(action) + ","
+			params += '"' + flow_expressions[0]
+			for expression in flow_expressions[1:]:
+				params += ', ' + expression
+			params += '"'
+			return self.operate("start_cf", params )
+		else:
+			return (False, "Incorect parameters")
 	
 	def stop_cf(self):
 		""" Method to stop the color flow """
