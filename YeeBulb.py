@@ -19,6 +19,7 @@ class YeeBulb:
 		self.name = name #Could be used instead of id to represent the bulb
 		self.methods = methods
 		self.cmd_id = int(0)
+		self.MSocket #Socket for music mode
 
 	@classmethod
 	def display(cls, 	msg):
@@ -313,14 +314,6 @@ class YeeBulb:
 			*split set_music() into music_mode_start() and music_mode_stop()
 		"""
 		pass
-		#Turn music mode on
-		if int(action) == 1:
-			YeeBulb.DISPLAY_MSG = False		#Turn off YeeBulb messages
-			YeeBulb.HANDLE_RESPONSE = False #Turn off handling response messages
-		#Turn music mode off
-		else:
-			YeeBulb.DISPLAY_MSG = True		#Turn on YeeBulb messages
-			YeeBulb.HANDLE_RESPONSE = True  #Turn on handling response messages
 
 	def set_name(self, name):
 		"""
@@ -330,3 +323,35 @@ class YeeBulb:
 			name: new name of the bulb
 		"""
 		return self.operate("set_name", str(name))
+
+		def set_strobe(self, action, host, port)
+		"""
+		Method to start and stop strobe effect. Based on music mode.
+		"""
+		#Turn music mode on
+		if int(action) == 1:
+			YeeBulb.DISPLAY_MSG = False		#Turn off YeeBulb messages
+			YeeBulb.HANDLE_RESPONSE = False #Turn off handling response messages
+			#call a function from a new file that would start a new thread with the tone generation and sending it to bulb over tcp.
+			#the function should return a ip/port that can be sent to the bulb and saved somwhere locally
+			#then there has to be a function that would stop the thread amd brake the socket
+
+			#Create a socket pass to thread
+			self.MSocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+			self.MSocket.connect(("192.168.0.2", int(54321)))
+			#Creates a seperate thread that generates and sends strobe commands to the bulb
+			strobe_thread = threading.Thread(target=Start_strobe(host, port, socket, freq, duration))
+			strobe_thread.setDaemon(True)
+			#Start the thread
+			strobe_thread.start()
+
+			params = str(action + ',"192.168.0.2", 54321"')
+
+		#Turn music mode off
+		else:
+			YeeBulb.DISPLAY_MSG = True		#Turn on YeeBulb messages
+			YeeBulb.HANDLE_RESPONSE = True  #Turn on handling response messages
+			params = str(action)
+			#close socket with a pause? to give some time for the bulb tu react
+
+		return self.operate("set_music", params)
