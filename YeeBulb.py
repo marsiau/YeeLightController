@@ -1,5 +1,7 @@
 import socket
 import re
+import time
+import threading	#Multithreding library
 
 #Bulb class
 class YeeBulb:
@@ -11,6 +13,7 @@ class YeeBulb:
 	DISPLAY_MSG = True		#Turn on/off YeeBulb messages
 	HANDLE_RESPONSE = True  #Turn on/off handling response messages
 	supported_properties = ["power", "bright", "ct", "rgb", "hue", "sat", "color_mode", "flowing", "delayoff", "flow_params", "music_on", "name"]
+
 	def __init__(self, bulb_id, bulb_ip, bulb_port, model, name, methods):
 		self.id = bulb_id
 		self.ip = bulb_ip
@@ -19,10 +22,10 @@ class YeeBulb:
 		self.name = name #Could be used instead of id to represent the bulb
 		self.methods = methods
 		self.cmd_id = int(0)
-		self.MSocket #Socket for music mode
+		self.MSocket = None #Socket for music mode
 
 	@classmethod
-	def display(cls, 	msg):
+	def display(cls, msg):
 		if YeeBulb.DISPLAY_MSG:
  			print(msg)
 
@@ -98,8 +101,10 @@ class YeeBulb:
 				tcp_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 				YeeBulb.display("connecting " + self.ip +" "+ self.port +"...")
 				tcp_socket.connect((self.ip, int(self.port)))
+				print("jobany wrot\n\n" + str(tcp_socket.getsockname()) + "\n\n")
 				msg="{\"id\":" + str(self.next_id()) + ",\"method\":\""
 				msg += method + "\",\"params\":[" + params + "]}\r\n"
+				print("\n\n" + msg + "\n\n")
 				tcp_socket.send(msg.encode())
 
 				if YeeBulb.HANDLE_RESPONSE:
@@ -324,34 +329,80 @@ class YeeBulb:
 		"""
 		return self.operate("set_name", str(name))
 
-		def set_strobe(self, action, host, port)
+	def start_strobe(self, clientsocket, freq, duration):
+		"""
+		Function to simulate the stroboscope effect on the bulb
+		"""
+		time.sleep(1)
+		#If duration is not specified do a continious loop
+		if duration == 0:
+			mode = 1
+		else:
+			mode = 0
+		print("aaaaaaik nxxxx")
+		#Calculate the time between change of state and convert to milisecounds
+		sleep_time = (1/int(freq))
+		end_time = time.time() + float(duration)
+		#wait for a bit before starting the loop
+		print("mode = " + str(mode))
+		while(mode or (time.time() < end_time)):
+			msg = "{\"id\":" + str(self.next_id()) +  ",\"method\":\"toggle\",\"params\":[]}\r\n"
+			try:
+				print(msg)
+				self.MSocket.send(msg.encode())
+				#clientsocket.send(msg.encode())
+				time.sleep(sleep_time)
+			except Exception as e:
+				print(e)
+				break #If sending fails kill the thread
+		self.MSocket.close()
+	
+	def set_strobe(self, action, freq, duration, port = 0):
 		"""
 		Method to start and stop strobe effect. Based on music mode.
 		"""
+
+		print("suka blt nz" + str(action) + str(freq) + "  " + str(duration))
+
 		#Turn music mode on
 		if int(action) == 1:
 			YeeBulb.DISPLAY_MSG = False		#Turn off YeeBulb messages
-			YeeBulb.HANDLE_RESPONSE = False #Turn off handling response messages
-			#call a function from a new file that would start a new thread with the tone generation and sending it to bulb over tcp.
-			#the function should return a ip/port that can be sent to the bulb and saved somwhere locally
-			#then there has to be a function that would stop the thread amd brake the socket
+			#YeeBulb.HANDLE_RESPONSE = False #Turn off handling response messages
+			try:
+				#Create socket for TCP
+				self.MSocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+				self.MSocket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1) #TODO is this for socket Reuse?
+				self.MSocket.bind(("", port))
+				self.MSocket.listen()
+				host, port = self.MSocket.getsockname()
+				host_ip = "192.168.1.8"
+				print("host = " + str(host) + "\nport = " + str(port))
+		
 
-			#Create a socket pass to thread
-			self.MSocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-			self.MSocket.connect(("192.168.0.2", int(54321)))
+				params = str(action + ',"' + host_ip + '",' + str(port))
+				print("parameters: " + params)
+				response = self.operate("set_music", params)
+				self.MSocket.settimeout(5)	
+				(clientsocket, address) = self.MSocket.accept()
+				print("\n\n" +str(clientsocket) + "\n" + str(address)+ "\n\n")
+				
+				self.MSocket.close()	
+				self.MSocket = clientsocket
+				self.MSocket.setblocking(0)	
+			except socket.error as e:
+				print(e)
+			print("shits gubbed3")
 			#Creates a seperate thread that generates and sends strobe commands to the bulb
-			strobe_thread = threading.Thread(target=Start_strobe(host, port, socket, freq, duration))
+			print(str([freq, duration]))
+			strobe_thread = threading.Thread(target=self.start_strobe, args=(clientsocket, freq, duration,))
 			strobe_thread.setDaemon(True)
 			#Start the thread
 			strobe_thread.start()
-
-			params = str(action + ',"192.168.0.2", 54321"')
-
 		#Turn music mode off
 		else:
 			YeeBulb.DISPLAY_MSG = True		#Turn on YeeBulb messages
 			YeeBulb.HANDLE_RESPONSE = True  #Turn on handling response messages
-			params = str(action)
+			self.MSocket.close()
+			response = self.operate("set_music", str(action))
 			#close socket with a pause? to give some time for the bulb tu react
-
-		return self.operate("set_music", params)
+		return response

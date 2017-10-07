@@ -323,7 +323,20 @@ def handle_user_input():
 				except Exception as e:
 					print(e)
 					valid_cli=False
-		
+		#TESTING STOBE
+		elif argv[0] == "strobe":
+			if len(argv) != 5:
+				print("incorrect argc")
+				valid_cli=False
+			else:
+				try:
+					idx = int(argv[1])
+					ipb = bulb_id2ip[idx]
+					print("argv[2:] = " + str(argv[2:]))
+					detected_bulbs[ipb].set_strobe(*argv[2:])
+				except Exception as e:
+					print(e)
+					valid_cli=False
 		#MINE-------------------------------------------END
 		else:
 			valid_cli=False
